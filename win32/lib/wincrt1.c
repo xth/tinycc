@@ -26,18 +26,14 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int);
 typedef struct { int newmode; } _startupinfo;
 int __cdecl __tgetmainargs(int *pargc, _TCHAR ***pargv, _TCHAR ***penv, int globb, _startupinfo*);
 
-#ifdef __x86_64__
-static LONG WINAPI catch_sig(EXCEPTION_POINTERS *ex)
-{
-  return _XcptFilter(ex->ExceptionRecord->ExceptionCode, ex);
-}
-#endif
+#include "crtinit.c"
 
 static int go_winmain(TCHAR *arg1)
 {
     STARTUPINFO si;
     _TCHAR *szCmd, *p;
     int fShow;
+    int retval;
 
     GetStartupInfo(&si);
     if (si.dwFlags & STARTF_USESHOWWINDOW)
@@ -55,16 +51,21 @@ static int go_winmain(TCHAR *arg1)
 #if defined __i386__ || defined __x86_64__
     _controlfp(0x10000, 0x30000);
 #endif
-    return _tWinMain(GetModuleHandle(NULL), NULL, szCmd, fShow);
+    run_ctors(__argc, __targv, _tenviron);
+    retval = _tWinMain(GetModuleHandle(NULL), NULL, szCmd, fShow);
+    run_dtors();
+    return retval;
+}
+
+static LONG WINAPI catch_sig(EXCEPTION_POINTERS *ex)
+{
+  return _XcptFilter(ex->ExceptionRecord->ExceptionCode, ex);
 }
 
 int _twinstart(void)
 {
-    __TRY__
-#ifdef __x86_64__
-     SetUnhandledExceptionFilter(catch_sig);
-#endif
     _startupinfo start_info_con = {0};
+    SetUnhandledExceptionFilter(catch_sig);
     __set_app_type(__GUI_APP);
     __tgetmainargs(&__argc, &__targv, &_tenviron, 0, &start_info_con);
     exit(go_winmain(__argc > 1 ? __targv[1] : NULL));
